@@ -1,7 +1,7 @@
 import os
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from github import Github
 
@@ -32,7 +32,6 @@ def format_comment(data, results):
         data[0]['hash']}\n\n"
     comment += f"**Pull Request {data[0]['pull_request']
                                  }:** [Results]({DETAILS_URL}{data[0]['hash']})\n"
-
     if results is None:
         comment += "\n**Status:** Test results are not yet available. Please check back later.\n"
     else:
@@ -43,10 +42,9 @@ def format_comment(data, results):
             comment += f"- {status_emoji} **{result['testcase']}**: {
                 result['status']} (Duration: {result['duration']}s)\n"
             if result['status'] == "FAIL" and result.get('log'):
-                comment += f"  - [Log]({result['log']})\n"
-
-    comment += f"\nLast updated: {
-        datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                comment += f" - [Log]({result['log']})\n"
+    comment += f"\nLast updated: {datetime.now(
+        timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
     return comment
 
 
@@ -68,7 +66,6 @@ def process_pull_request(pr):
     if not data:
         print(f"No data available for PR #{pr.number}. Skipping.")
         return
-
     results = get_test_results(commit_hash)
     comment_body = format_comment(data, results)
     update_or_create_comment(pr, comment_body, commit_hash)
@@ -81,11 +78,13 @@ def main():
 
     g = Github(github_token)
     repo = g.get_repo(REPO_NAME)
-
     open_prs = sorted(repo.get_pulls(state='open'),
                       key=lambda x: x.updated_at, reverse=True)
-    recent_prs = [pr for pr in open_prs if pr.updated_at >
-                  datetime.now() - timedelta(hours=48)]
+
+    # Use UTC for consistency
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=48)
+    recent_prs = [pr for pr in open_prs if pr.updated_at.replace(
+        tzinfo=timezone.utc) > cutoff_time]
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(process_pull_request, pr)
