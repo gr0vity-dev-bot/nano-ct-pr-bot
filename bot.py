@@ -27,7 +27,7 @@ def get_test_results(commit_hash):
     return None
 
 
-def format_comment(data, results):
+def format_comment(data, results, overall_stats):
     comment = f"{COMMENT_MARKER}\n## Test Results for Commit {
         data[0]['hash']}\n\n"
     comment += f"**Pull Request {data[0]['pull_request']
@@ -35,7 +35,7 @@ def format_comment(data, results):
     if results is None:
         comment += "\n**Status:** Test results are not yet available. Please check back later.\n"
     else:
-        comment += f"**Overall Status:** {data[0]['overall_status']}\n\n"
+        comment += f"{overall_stats}\n\n"
         comment += "### Test Case Results\n\n"
         for result in results:
             status_emoji = "✅" if result['status'] == "PASS" else "❌"
@@ -48,16 +48,18 @@ def format_comment(data, results):
     return comment
 
 
-def update_or_create_comment(pr, comment_body, commit_hash):
+def update_or_create_comment(pr, comment_body, commit_hash, overall_status):
     for comment in pr.get_issue_comments():
         if COMMENT_MARKER in comment.body:
-            if commit_hash in comment.body:
+            if commit_hash in comment.body and overall_status in comment.body:
                 print(f"Comment for commit {
                       commit_hash} already exists. Skipping.")
                 return
+            print("comment.edit", comment_body)
             comment.edit(comment_body)
             return
     pr.create_issue_comment(comment_body)
+    print("create_issue_comment", comment_body)
 
 
 def process_pull_request(pr):
@@ -67,8 +69,9 @@ def process_pull_request(pr):
         print(f"No data available for PR #{pr.number}. Skipping.")
         return
     results = get_test_results(commit_hash)
-    comment_body = format_comment(data, results)
-    update_or_create_comment(pr, comment_body, commit_hash)
+    overall_stats = f"**Overall Status:** {data[0]["overall_status"]}"
+    comment_body = format_comment(data, results, overall_stats)
+    update_or_create_comment(pr, comment_body, commit_hash, overall_stats)
 
 
 def main():
