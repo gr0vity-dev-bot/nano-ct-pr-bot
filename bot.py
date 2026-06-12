@@ -3,6 +3,7 @@ import requests
 import json
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from github import Github
 
 # Configuration
@@ -11,6 +12,7 @@ DATA_API = "https://ct.bnano.info/api/data/"
 RESULTS_API = "https://ct.bnano.info/api/results/"
 REPO_NAME = "nanocurrency/nano-node"
 COMMENT_MARKER = "<!-- GR0VITY_DEV_BOT_NANOCT -->"
+README_PATH = Path("README.md")
 
 
 def get_test_data(commit_hash):
@@ -54,12 +56,13 @@ def update_or_create_comment(pr, comment_body, commit_hash, overall_status):
             if commit_hash in comment.body and overall_status in comment.body:
                 print(f"Comment for commit {
                       commit_hash} already exists. Skipping.")
-                return
+                return False
             print("comment.edit", comment_body)
             comment.edit(comment_body)
-            return
+            return True
     pr.create_issue_comment(comment_body)
     print("create_issue_comment", comment_body)
+    return True
 
 
 def process_pull_request(pr):
@@ -67,11 +70,24 @@ def process_pull_request(pr):
     data = get_test_data(commit_hash)
     if not data:
         print(f"No data available for PR #{pr.number}. Skipping.")
-        return
+        return False
     results = get_test_results(commit_hash)
     overall_stats = f"**Overall Status:** {data[0]["overall_status"]}"
     comment_body = format_comment(data, results, overall_stats)
-    update_or_create_comment(pr, comment_body, commit_hash, overall_stats)
+    return update_or_create_comment(pr, comment_body, commit_hash, overall_stats)
+
+
+def update_readme_last_edit():
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    readme = README_PATH.read_text()
+    lines = readme.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("Last edit:"):
+            lines[index] = f"Last edit: {today}"
+            break
+    else:
+        lines.append(f"Last edit: {today}")
+    README_PATH.write_text("\n".join(lines) + "\n")
 
 
 def main():
@@ -92,8 +108,12 @@ def main():
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(process_pull_request, pr)
                    for pr in recent_prs]
+        updated_comments = False
         for future in as_completed(futures):
-            future.result()
+            updated_comments = future.result() or updated_comments
+
+    if updated_comments:
+        update_readme_last_edit()
 
 
 if __name__ == "__main__":
