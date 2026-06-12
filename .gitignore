@@ -2,3 +2,6 @@ bot_secrets.py
 init.txt
 **__pycache__**
 ven/
+.env
+.braid/
+.agents/
